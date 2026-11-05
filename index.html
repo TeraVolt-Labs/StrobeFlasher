@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#202521" />
+    <title>UPDI Link Console</title>
+  </head>
+  <body>
+    <main class="console">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">UPDI WEB FLASHER / PHASE 1</p>
+          <h1>Link console</h1>
+        </div>
+        <span class="protocol-tag">8E2 · 115200 baud</span>
+      </header>
+
+      <section class="session" aria-labelledby="session-title">
+        <div class="section-heading">
+          <h2 id="session-title">Device session</h2>
+          <span id="connection-state" class="state" data-state="idle">NOT CONNECTED</span>
+        </div>
+        <p id="browser-warning" class="warning" hidden>
+          Web Serial is unavailable. Open this page in Chrome or Edge on a secure origin.
+        </p>
+        <div class="actions">
+          <button id="connect-button" class="button button-primary" type="button">Connect and read signature</button>
+          <button id="disconnect-button" class="button button-secondary" type="button" disabled>Disconnect</button>
+        </div>
+        <div class="result" aria-live="polite">
+          <span class="result-label">DETECTED DEVICE</span>
+          <strong id="device-result">No device connected</strong>
+          <span id="signature-result" class="signature">Signature: -- -- --</span>
+        </div>
+      </section>
+
+      <section class="transcript" aria-labelledby="transcript-title">
+        <div class="section-heading">
+          <h2 id="transcript-title">Session log</h2>
+          <button id="clear-log-button" class="text-button" type="button">Clear</button>
+        </div>
+        <pre id="session-log" aria-live="polite">$ ready; waiting for a serial port</pre>
+      </section>
+      <footer>Read-only link check. No flash, fuse, or lock-bit writes are issued in this phase.</footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
