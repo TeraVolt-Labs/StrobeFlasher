@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UPDI Mock Browser Check</title>
+  </head>
+  <body>
+    <main>
+      <h1>UPDI browser mock</h1>
+      <output id="result">Running full-image mock check...</output>
+    </main>
+    <script type="module">
+      import { FirmwareImage } from "../src/image/image.ts";
+      import { MockUpdiTarget } from "./mock/mockUpdiTarget.ts";
+      import { SerialUpdiProgrammer } from "../src/updi/programmer.ts";
+      import { TINY412 } from "../src/updi/nvm.ts";
+
+      const output = document.getElementById("result");
+      const target = new MockUpdiTarget();
+      const programmer = new SerialUpdiProgrammer(target.port);
+
+      try {
+        await programmer.connect();
+        await programmer.enterProgMode();
+        const bytes = Uint8Array.from({ length: TINY412.flashSize }, (_, index) => (index * 19 + 7) & 0xff);
+        const image = new FirmwareImage([{ addr: 0, data: bytes }]);
+        for (const page of image.toPages(TINY412.flashPageSize)) {
+          await programmer.writePage(TINY412.flashBase + page.addr, page.data);
+        }
+        await programmer.verifyMem(TINY412.flashBase, bytes);
+        await programmer.leaveProgMode();
+        output.textContent = "PASS: ATtiny412 signature read, 4096 bytes written and verified.";
+        output.setAttribute("data-result", "pass");
+      } catch (error) {
+        output.textContent = `FAIL: ${error instanceof Error ? error.message : String(error)}`;
+        output.setAttribute("data-result", "fail");
+      } finally {
+        await programmer.disconnect().catch(() => undefined);
+      }
+    </script>
+  </body>
+</html>

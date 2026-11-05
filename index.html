@@ -3,46 +3,116 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#202521" />
-    <title>UPDI Link Console</title>
+    <meta name="theme-color" content="#edf0e7" />
+    <title>ATtiny412 Firmware Updater</title>
   </head>
   <body>
-    <main class="console">
-      <header class="topbar">
+    <main id="browser-check" class="browser-check" hidden>
+      <p class="eyebrow">ATtiny412 / FIRMWARE UPDATER</p>
+      <h1>Use Chrome or Edge</h1>
+      <p>Web Serial is required. Open this page in Chrome or Edge on desktop, or Chrome on Android, using HTTPS or localhost.</p>
+    </main>
+
+    <main id="app" class="app" hidden>
+      <header class="masthead">
         <div>
-          <p class="eyebrow">UPDI WEB FLASHER / PHASE 1</p>
-          <h1>Link console</h1>
+          <p class="eyebrow">FIELD TOOL / UPDI</p>
+          <h1>ATtiny412</h1>
+          <p class="subtitle">Firmware updater</p>
         </div>
-        <span class="protocol-tag">8E2 · 115200 baud</span>
+        <span class="version-tag">OFFLINE · v0.1.0</span>
       </header>
 
-      <section class="session" aria-labelledby="session-title">
-        <div class="section-heading">
-          <h2 id="session-title">Device session</h2>
+      <div class="workflow" aria-label="Firmware update steps">
+        <span><b>01</b> Connect</span>
+        <span><b>02</b> Select file</span>
+        <span><b>03</b> Flash &amp; verify</span>
+      </div>
+
+      <section class="workflow-section" aria-labelledby="connect-title">
+        <div class="section-title">
+          <span class="step-number">01</span>
+          <div>
+            <h2 id="connect-title">Connect programmer</h2>
+            <p id="connection-message">Connect the programmer to the powered module.</p>
+          </div>
+        </div>
+        <div class="action-row">
+          <button id="connect-button" class="button button-primary" type="button">Connect to device</button>
+          <button id="disconnect-button" class="button button-quiet" type="button" disabled>Disconnect</button>
           <span id="connection-state" class="state" data-state="idle">NOT CONNECTED</span>
         </div>
-        <p id="browser-warning" class="warning" hidden>
-          Web Serial is unavailable. Open this page in Chrome or Edge on a secure origin.
-        </p>
-        <div class="actions">
-          <button id="connect-button" class="button button-primary" type="button">Connect and read signature</button>
-          <button id="disconnect-button" class="button button-secondary" type="button" disabled>Disconnect</button>
-        </div>
-        <div class="result" aria-live="polite">
-          <span class="result-label">DETECTED DEVICE</span>
-          <strong id="device-result">No device connected</strong>
-          <span id="signature-result" class="signature">Signature: -- -- --</span>
-        </div>
+        <div id="device-result" class="device-result" aria-live="polite">No device connected</div>
+        <p id="signature-result" class="signature" hidden></p>
       </section>
 
-      <section class="transcript" aria-labelledby="transcript-title">
-        <div class="section-heading">
-          <h2 id="transcript-title">Session log</h2>
-          <button id="clear-log-button" class="text-button" type="button">Clear</button>
+      <section class="workflow-section" aria-labelledby="file-title">
+        <div class="section-title">
+          <span class="step-number">02</span>
+          <div>
+            <h2 id="file-title">Select firmware</h2>
+            <p>Choose an Intel HEX or raw BIN file stored on this device.</p>
+          </div>
         </div>
-        <pre id="session-log" aria-live="polite">$ ready; waiting for a serial port</pre>
+        <label id="drop-zone" class="drop-zone" for="firmware-file">
+          <span class="drop-title">Drop firmware file here</span>
+          <span class="drop-hint">or choose a local file</span>
+          <span class="file-types">.hex · .ihex · .bin</span>
+        </label>
+        <input id="firmware-file" class="visually-hidden" type="file" accept=".hex,.ihex,.bin,text/plain,application/octet-stream" />
+        <div id="file-summary" class="file-summary" hidden>
+          <strong id="file-name"></strong>
+          <span id="file-metadata"></span>
+          <span id="file-crc" class="crc"></span>
+        </div>
+        <p id="file-error" class="inline-error" role="alert" hidden></p>
       </section>
-      <footer>Read-only link check. No flash, fuse, or lock-bit writes are issued in this phase.</footer>
+
+      <section class="workflow-section flash-section" aria-labelledby="flash-title">
+        <div class="section-title">
+          <span class="step-number">03</span>
+          <div>
+            <h2 id="flash-title">Flash and verify</h2>
+            <p>Each selected 64-byte page is erased, written, and read back for verification.</p>
+          </div>
+        </div>
+        <button id="flash-button" class="button button-flash" type="button" disabled>Flash firmware</button>
+        <div class="progress-row">
+          <progress id="flash-progress" max="100" value="0">0%</progress>
+          <span id="progress-label">READY</span>
+        </div>
+        <div id="result-banner" class="result-banner" data-state="idle" role="status" aria-live="polite" hidden></div>
+      </section>
+
+      <details class="advanced">
+        <summary>Advanced</summary>
+        <div class="advanced-content">
+          <label class="field-label" for="baud-rate">Serial speed</label>
+          <select id="baud-rate">
+            <option value="115200" selected>115200 baud</option>
+            <option value="230400">230400 baud</option>
+          </select>
+          <label class="check-row" for="force-chip-erase">
+            <input id="force-chip-erase" type="checkbox" />
+            <span>Erase all Flash and EEPROM before writing</span>
+          </label>
+          <p class="advanced-warning">A full chip erase removes existing firmware and EEPROM data. It is only available after the ATtiny412 signature has been verified.</p>
+          <div class="readback-dump">
+            <span class="field-label">First bytes read back</span>
+            <code id="raw-dump">Not read yet</code>
+          </div>
+        </div>
+      </details>
+
+      <details class="diagnostics">
+        <summary>Session log</summary>
+        <div class="diagnostics-tools">
+          <button id="copy-diagnostics" class="button button-quiet" type="button">Copy diagnostics</button>
+          <button id="clear-log-button" class="text-button" type="button">Clear log</button>
+        </div>
+        <pre id="session-log" aria-live="polite">Ready. No data leaves this browser.</pre>
+      </details>
+      <footer>Programmer: 8 data bits, even parity, 2 stop bits. UPDI remains enabled after flashing.</footer>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

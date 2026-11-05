@@ -15,6 +15,7 @@ export interface SerialPortLike {
   open(options: SerialOptions): Promise<void>;
   close(): Promise<void>;
   setSignals?(signals: { break?: boolean }): Promise<void>;
+  getInfo?(): { usbVendorId?: number; usbProductId?: number };
 }
 
 export type BreakPath = "signals" | "baud-trick";

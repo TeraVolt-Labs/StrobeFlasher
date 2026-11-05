@@ -25,6 +25,10 @@ export class SerialUpdiProgrammer implements Programmer {
     private readonly timeoutMs = 1000
   ) {}
 
+  get portInfo(): { usbVendorId?: number; usbProductId?: number } | null {
+    return this.port.getInfo?.() ?? null;
+  }
+
   async connect(): Promise<DeviceInfo> {
     if (this.link) throw new Error("The programmer is already connected.");
     this.transport = await WebSerialTransport.open(this.port, this.baudRate, this.timeoutMs);

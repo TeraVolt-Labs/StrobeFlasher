@@ -66,6 +66,7 @@ export function parseIntelHex(text: string): FirmwareImage {
   }
 
   if (!sawEndOfFile) throw new IntelHexError(lines.length || 1, "missing end-of-file record.");
+  if (memory.size === 0) throw new IntelHexError(lines.length || 1, "record set contains no Flash data.");
   return new FirmwareImage(toSegments(memory));
 }
 

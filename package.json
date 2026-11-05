@@ -6,12 +6,14 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "test": "vitest run",
+    "test": "npm run build && vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/node": "^22.10.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.1",
-    "vitest": "^2.1.8"
+    "vite-plugin-singlefile": "^2.3.4",
+    "vitest": "^3.2.4"
   }
 }
