@@ -1,4 +1,5 @@
 import { NoResponseError, type BreakPath, WebSerialTransport } from "../transport/webserial";
+import { ProtocolError } from "./errors";
 
 export const UPDI = {
   sync: 0x55,
@@ -88,6 +89,10 @@ export class UpdiLink {
 
   constructor(private readonly transport: WebSerialTransport) {}
 
+  get breakPathUsed(): BreakPath {
+    return this.breakPath;
+  }
+
   async initialize(): Promise<number> {
     this.breakPath = await this.transport.sendBreak();
     await this.writeCs(UPDI_REGISTERS.controlB, 0x08);
@@ -121,11 +126,73 @@ export class UpdiLink {
     await this.transport.send(Uint8Array.of(UPDI.sync, encodeStcs(register), value & 0xff));
   }
 
+  async sendKey(key: string): Promise<void> {
+    const bytes = new TextEncoder().encode(key);
+    if (bytes.length !== 8) throw new RangeError("UPDI activation keys must contain exactly 8 bytes.");
+    await this.transport.send(Uint8Array.of(UPDI.sync, encodeKey(0)));
+    await this.transport.send(bytes.slice().reverse());
+  }
+
+  async readSib(): Promise<Uint8Array> {
+    await this.transport.send(Uint8Array.of(UPDI.sync, UPDI.key | 0x04 | 0x02));
+    return this.transport.read(32);
+  }
+
+  async reset(assertReset: boolean): Promise<void> {
+    await this.writeCs(UPDI_REGISTERS.asiResetRequest, assertReset ? 0x59 : 0x00);
+  }
+
+  async writeMemoryByte(address: number, value: number): Promise<void> {
+    this.validateAddress(address);
+    await this.transport.send(Uint8Array.of(
+      UPDI.sync,
+      encodeSts(1, 0),
+      address & 0xff,
+      (address >>> 8) & 0xff
+    ));
+    await this.expectAck();
+    await this.transport.send(Uint8Array.of(value & 0xff));
+    await this.expectAck();
+  }
+
+  async writePointerWords(address: number, data: Uint8Array): Promise<void> {
+    this.validateAddress(address);
+    if (data.length === 0 || data.length % 2 !== 0 || data.length > 512) {
+      throw new RangeError("Repeated UPDI word writes require 1-256 complete words.");
+    }
+
+    await this.setPointer(address);
+    const words = data.length / 2;
+    await this.transport.send(Uint8Array.of(UPDI.sync, encodeRepeat(0), words - 1));
+    await this.transport.send(Uint8Array.of(UPDI.sync, encodeSt(1, 1)));
+    await this.transport.send(data);
+    for (let word = 0; word < words; word += 1) await this.expectAck();
+  }
+
+  async readPointerBytes(address: number, length: number): Promise<Uint8Array> {
+    this.validateAddress(address);
+    if (!Number.isInteger(length) || length < 0 || address + length > 0x10000) {
+      throw new RangeError("Read length is outside the 16-bit data space.");
+    }
+
+    const data = new Uint8Array(length);
+    let offset = 0;
+    while (offset < length) {
+      const count = Math.min(256, length - offset);
+      await this.setPointer(address + offset);
+      if (count > 1) {
+        await this.transport.send(Uint8Array.of(UPDI.sync, encodeRepeat(0), count - 1));
+      }
+      await this.transport.send(Uint8Array.of(UPDI.sync, encodeLd(1, 0)));
+      data.set(await this.transport.read(count), offset);
+      offset += count;
+    }
+    return data;
+  }
+
   async readMemory(address: number, length: number): Promise<Uint8Array> {
     if (!this.initialized) throw new Error("Initialize the UPDI link before reading memory.");
-    if (!Number.isInteger(address) || address < 0 || address > 0xffff) {
-      throw new RangeError("UPDI address must fit in 16 bits.");
-    }
+    this.validateAddress(address);
     if (!Number.isInteger(length) || length < 0 || address + length > 0x10000) {
       throw new RangeError("Read length is outside the 16-bit data space.");
     }
@@ -142,6 +209,29 @@ export class UpdiLink {
       data[offset] = (await this.transport.read(1))[0]!;
     }
     return data;
+  }
+
+  private async setPointer(address: number): Promise<void> {
+    await this.transport.send(Uint8Array.of(
+      UPDI.sync,
+      encodeSt(2, 1),
+      address & 0xff,
+      (address >>> 8) & 0xff
+    ));
+    await this.expectAck();
+  }
+
+  private async expectAck(): Promise<void> {
+    const response = await this.transport.read(1);
+    if (response[0] !== UPDI.ack) {
+      throw new ProtocolError(`Expected UPDI ACK 0x40, received 0x${response[0]!.toString(16)}.`);
+    }
+  }
+
+  private validateAddress(address: number): void {
+    if (!Number.isInteger(address) || address < 0 || address > 0xffff) {
+      throw new RangeError("UPDI address must fit in 16 bits.");
+    }
   }
 }
 

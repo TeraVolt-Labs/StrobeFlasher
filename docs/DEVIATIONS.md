@@ -11,6 +11,8 @@ The protocol values used by Phase 1 agree between those sources. Confirmed detai
 - The datasheet specifies two consecutive BREAK characters for reliable recovery. The Web Serial signal path holds BREAK low for 25 ms per pulse; the fallback reopens at 300 baud with 8E1 for the zero-byte break pulses, then restores 115200 8E2. These are transport-level ways to produce the required line condition, not different UPDI opcodes.
 - Datasheet key signatures are presented as 64-bit values. The physical key bytes are sent least-significant byte first; pymcuprog implements this by reversing each key's byte sequence. The ASCII key names in the plan are the human-readable, unreversed strings.
 - NVMCTRL command `WP` (0x01) is valid only after the Flash page has been erased. Use `ERWP` (0x03) when the erased state is not known. Phase 1 does not issue either command.
+- There is a requirements conflict for locked chips: the datasheet says only SIB access is possible while locked, and pymcuprog's SIB decoder reports family/interface metadata rather than the exact ATtiny part. Therefore the exact `1E 92 23` signature cannot be verified before a destructive chip erase. To preserve the non-negotiable signature-before-write rule, this implementation refuses to erase a locked, unverified chip. An identity source that can prove the exact part, or an explicit change to that safety requirement, is needed before enabling locked-chip recovery.
+- For an already signature-verified, unlocked ATtiny412, the NVM controller `CHER` command is used for chip erase, matching pymcuprog's normal unlocked-device path. The `NVMErase` key is the locked-device recovery path, which this default flow intentionally blocks for the identity reason above.
 
 ## Sources
 
