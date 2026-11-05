@@ -64,7 +64,7 @@ export class WebSerialTransport {
 
     try {
       await this.writer.write(bytes);
-      const echo = await this.read(bytes.length);
+      const echo = await this.read(bytes.length, this.timeoutMs, "USB-serial TX echo");
       if (!bytesEqual(bytes, echo)) {
         throw new PortError("The serial echo did not match the transmitted bytes.");
       }
@@ -74,19 +74,24 @@ export class WebSerialTransport {
     }
   }
 
-  async read(length: number, timeoutMs = this.timeoutMs): Promise<Uint8Array> {
+  async read(length: number, timeoutMs = this.timeoutMs, waitingFor = "UPDI response"): Promise<Uint8Array> {
     if (!Number.isInteger(length) || length < 0) {
       throw new RangeError("Read length must be a non-negative integer.");
     }
 
     while (this.received.length < length) {
-      await this.readChunk(timeoutMs);
+      await this.readChunk(timeoutMs, waitingFor);
     }
 
     return Uint8Array.from(this.received.splice(0, length));
   }
 
-  async sendBreak(): Promise<BreakPath> {
+  async sendBreak(forceBaudBreak = false): Promise<BreakPath> {
+    if (forceBaudBreak) {
+      await this.sendBaudBreaks();
+      return "baud-trick";
+    }
+
     try {
       if (!this.port.setSignals) throw new Error("Break signals are unavailable.");
       await this.pulseBreakSignal();
@@ -121,7 +126,7 @@ export class WebSerialTransport {
       for (let pulse = 0; pulse < 2; pulse += 1) {
         if (!this.writer) throw new PortError("The serial port is not open.");
         await this.writer.write(Uint8Array.of(0x00));
-        await this.read(1, this.timeoutMs);
+        await this.read(1, this.timeoutMs, "USB-serial BREAK echo");
         if (pulse === 0) await delay(100);
       }
     } finally {
@@ -186,16 +191,18 @@ export class WebSerialTransport {
     }
   }
 
-  private async readChunk(timeoutMs: number): Promise<void> {
+  private async readChunk(timeoutMs: number, waitingFor: string): Promise<void> {
     if (!this.reader) throw new PortError("The serial port is not open.");
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new NoResponseError()), timeoutMs);
+        timer = setTimeout(() => reject(new NoResponseError(`Timed out waiting for ${waitingFor}.`)), timeoutMs);
       });
       const result = await Promise.race([this.reader.read(), timeout]);
-      if (result.done || !result.value) throw new NoResponseError("The serial connection closed while reading.");
+      if (result.done || !result.value) {
+        throw new NoResponseError(`The serial connection closed while waiting for ${waitingFor}.`);
+      }
       this.received.push(...result.value);
     } catch (error) {
       if (error instanceof NoResponseError) {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NoResponseError, WebSerialTransport } from "../src/transport/webserial";
 import {
   encodeKey,
@@ -76,5 +76,22 @@ describe("UPDI link over Web Serial transport", () => {
     const link = new UpdiLink(transport);
 
     await expect(link.initialize()).rejects.toBeInstanceOf(NoResponseError);
+  });
+
+  it("retries initialization with a slow break when the signal break does not sync", async () => {
+    const transport = {
+      sendBreak: vi.fn()
+        .mockResolvedValueOnce("signals")
+        .mockResolvedValueOnce("baud-trick"),
+      send: vi.fn().mockResolvedValue(undefined),
+      read: vi.fn()
+        .mockRejectedValueOnce(new NoResponseError())
+        .mockResolvedValueOnce(Uint8Array.of(0x20))
+    } as unknown as WebSerialTransport;
+    const link = new UpdiLink(transport);
+
+    await expect(link.initialize()).resolves.toBe(0x20);
+    expect(transport.sendBreak).toHaveBeenNthCalledWith(2, true);
+    expect(link.breakPathUsed).toBe("baud-trick");
   });
 });

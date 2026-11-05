@@ -1,4 +1,4 @@
-import { NoResponseError, type BreakPath, WebSerialTransport } from "../transport/webserial";
+import { NoResponseError, PortError, type BreakPath, WebSerialTransport } from "../transport/webserial";
 import { ProtocolError } from "./errors";
 
 export const UPDI = {
@@ -95,6 +95,16 @@ export class UpdiLink {
 
   async initialize(): Promise<number> {
     this.breakPath = await this.transport.sendBreak();
+    try {
+      return await this.initializeAfterBreak();
+    } catch (error) {
+      if (!(error instanceof NoResponseError) && !(error instanceof PortError)) throw error;
+      this.breakPath = await this.transport.sendBreak(true);
+      return this.initializeAfterBreak();
+    }
+  }
+
+  private async initializeAfterBreak(): Promise<number> {
     await this.writeCs(UPDI_REGISTERS.controlB, 0x08);
     await this.writeCs(UPDI_REGISTERS.controlA, 0x80);
 
@@ -119,7 +129,7 @@ export class UpdiLink {
 
   async readCs(register: number): Promise<number> {
     await this.transport.send(Uint8Array.of(UPDI.sync, encodeLdcs(register)));
-    return (await this.transport.read(1))[0]!;
+    return (await this.transport.read(1, undefined, "UPDI control/status response"))[0]!;
   }
 
   async writeCs(register: number, value: number): Promise<void> {
@@ -135,7 +145,7 @@ export class UpdiLink {
 
   async readSib(): Promise<Uint8Array> {
     await this.transport.send(Uint8Array.of(UPDI.sync, UPDI.key | 0x04 | 0x02));
-    return this.transport.read(32);
+    return this.transport.read(32, undefined, "UPDI SIB response");
   }
 
   async reset(assertReset: boolean): Promise<void> {
@@ -161,12 +171,16 @@ export class UpdiLink {
       throw new RangeError("Repeated UPDI word writes require 1-256 complete words.");
     }
 
-    await this.setPointer(address);
     const words = data.length / 2;
+    await this.setPointer(address);
     await this.transport.send(Uint8Array.of(UPDI.sync, encodeRepeat(0), words - 1));
-    await this.transport.send(Uint8Array.of(UPDI.sync, encodeSt(1, 1)));
-    await this.transport.send(data);
-    for (let word = 0; word < words; word += 1) await this.expectAck();
+    await this.writeCs(UPDI_REGISTERS.controlA, 0x88);
+    try {
+      await this.transport.send(Uint8Array.of(UPDI.sync, encodeSt(1, 1)));
+      await this.transport.send(data);
+    } finally {
+      await this.writeCs(UPDI_REGISTERS.controlA, 0x80);
+    }
   }
 
   async readPointerBytes(address: number, length: number): Promise<Uint8Array> {
@@ -222,7 +236,7 @@ export class UpdiLink {
   }
 
   private async expectAck(): Promise<void> {
-    const response = await this.transport.read(1);
+    const response = await this.transport.read(1, undefined, "UPDI write ACK");
     if (response[0] !== UPDI.ack) {
       throw new ProtocolError(`Expected UPDI ACK 0x40, received 0x${response[0]!.toString(16)}.`);
     }

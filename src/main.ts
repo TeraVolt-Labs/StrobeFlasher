@@ -5,7 +5,7 @@ import { parseIntelHex } from "./image/ihex";
 import { AT_TINY412_FLASH_PAGE_SIZE, AT_TINY412_FLASH_SIZE, FirmwareImage } from "./image/image";
 import { NoResponseError, PortError, type SerialPortLike } from "./transport/webserial";
 import { LockedError, NvmWriteError, ProtocolError, TimeoutError, VerifyError } from "./updi/errors";
-import { formatSignature, WrongDeviceError } from "./updi/link";
+import { WrongDeviceError } from "./updi/link";
 import { SerialUpdiProgrammer, TINY412 } from "./updi/programmer";
 
 interface WebSerialApi {
@@ -104,29 +104,29 @@ async function connectToDevice(): Promise<void> {
     const info = await candidate.connect();
     programmer = candidate;
     portIdentifiers = candidate.portInfo;
-    deviceResult.textContent = "ATtiny412 detected";
-    signatureResult.textContent = `Signature: ${formatSignature(info.signature)}`;
+    deviceResult.textContent = "StrobeIT-Pro detected";
+    signatureResult.textContent = "Device identity verified";
     signatureResult.hidden = false;
-    connectionMessage.textContent = `Connected at ${baudRate.value} baud. UPDI revision ${info.updiRevision}.`;
+    connectionMessage.textContent = `Connected at ${baudRate.value} baud.`;
     setConnectionState("connected", "CONNECTED");
-    appendLog(`ATtiny412 signature verified (${formatSignature(info.signature)})`);
-    appendLog(`reset/break path: ${info.breakPath}`);
+    appendLog("StrobeIT-Pro identity verified");
+    appendLog(`reset method: ${info.breakPath === "signals" ? "signal reset" : "slow-speed reset"}`);
     if (portIdentifiers) appendLog(`USB IDs: ${formatUsbId(portIdentifiers.usbVendorId)}:${formatUsbId(portIdentifiers.usbProductId)}`);
     baudRate.disabled = true;
   } catch (error) {
     await candidate?.disconnect().catch(() => undefined);
     lastError = plainError(error);
-    deviceResult.textContent = error instanceof WrongDeviceError ? "Different chip detected" : "Not connected";
+    deviceResult.textContent = error instanceof WrongDeviceError ? "Unsupported device" : "Not connected";
     signatureResult.textContent = error instanceof WrongDeviceError
-      ? `Signature: ${formatSignature(error.signature)}`
+      ? "Device identity could not be verified"
       : error instanceof LockedError
-        ? "Signature not available; chip is locked"
-        : "Signature not available";
+        ? "Device is locked"
+        : "Identity not available";
     signatureResult.hidden = false;
     connectionMessage.textContent = nextStep(error);
     setConnectionState("error", "NOT CONNECTED");
     showBanner(lastError, "error");
-    appendLog(lastError);
+    appendLog(`connection failed: ${lastError}${diagnosticHint(error)}`);
   } finally {
     connectButton.disabled = Boolean(programmer);
     refreshFlashButton();
@@ -139,7 +139,7 @@ async function disconnectFromDevice(): Promise<void> {
   programmer = null;
   portIdentifiers = null;
   deviceResult.textContent = "No device connected";
-  signatureResult.textContent = "Signature not available";
+  signatureResult.textContent = "Identity not available";
   signatureResult.hidden = true;
   connectionMessage.textContent = "Connect the programmer to the powered module.";
   setConnectionState("idle", "NOT CONNECTED");
@@ -194,15 +194,19 @@ async function flashFirmware(): Promise<void> {
   disconnectButton.disabled = true;
   flashProgress.value = 0;
   rawDump.textContent = "Reading back...";
-  showBanner("Preparing the ATtiny412.", "working");
+  showBanner("Preparing StrobeIT-Pro.", "working");
 
   const pages = firmware.image.toPages(AT_TINY412_FLASH_PAGE_SIZE);
   try {
+    setProgress(2, "PREPARING DEVICE");
+    appendLog("preparing device for update");
     await activeProgrammer.enterProgMode();
+    appendLog("device ready for programming");
     if (eraseEntireChip) {
-      setProgress(4, "ERASING CHIP");
-      appendLog("starting full chip erase after signature verification and confirmation");
+      setProgress(4, "ERASING DEVICE");
+      appendLog("starting full erase after device verification and confirmation");
       await activeProgrammer.chipErase();
+      appendLog("full chip erase completed");
     }
 
     for (let index = 0; index < pages.length; index += 1) {
@@ -226,11 +230,27 @@ async function flashFirmware(): Promise<void> {
     showBanner("Flashed and verified", "success");
     appendLog(`completed read-back verification for ${firmware.image.size} Flash bytes`);
   } catch (error) {
+    const failedStage = progressLabel.textContent || "unknown stage";
     lastError = plainError(error);
     showBanner(`${lastError} ${nextStep(error)}`, "error");
     progressLabel.textContent = "FAILED";
-    appendLog(`flash failed: ${lastError}`);
+    const diagnostic = diagnosticHint(error);
+    appendLog(`flash failed during ${failedStage}: ${lastError}${diagnostic}`);
     await activeProgrammer.leaveProgMode().catch(() => undefined);
+    if (requiresReconnect(error)) {
+      await activeProgrammer.disconnect().catch((disconnectError: unknown) => appendLog(plainError(disconnectError)));
+      if (programmer === activeProgrammer) {
+        programmer = null;
+        portIdentifiers = null;
+        deviceResult.textContent = "No device connected";
+        signatureResult.textContent = "Signature not available";
+        signatureResult.hidden = true;
+        connectionMessage.textContent = "Reconnect the programmer before retrying.";
+        setConnectionState("error", "RECONNECT REQUIRED");
+        baudRate.disabled = false;
+        appendLog("serial port closed after communication failure; reconnect before retrying");
+      }
+    }
   } finally {
     isBusy = false;
     connectButton.disabled = Boolean(programmer);
@@ -299,22 +319,39 @@ function appendLog(message: string): void {
 }
 
 function plainError(error: unknown): string {
-  if (error instanceof NoResponseError) return "No response on the UPDI line. Check the 3-wire connection and that the module is powered.";
-  if (error instanceof WrongDeviceError) return "This tool only programs the ATtiny412 and found a different chip.";
-  if (error instanceof LockedError) return "This chip is locked and cannot be identified as an ATtiny412. No erase was performed.";
-  if (error instanceof VerifyError) return "The data written does not match the file. Try again; if it fails again, check the wiring and power.";
-  if (error instanceof NvmWriteError) return "The chip reported a Flash write error. Keep it powered and retry the update.";
-  if (error instanceof TimeoutError) return "The chip took too long to respond. Keep it powered, reconnect, and retry.";
-  if (error instanceof PortError) return "The serial connection was interrupted. Check the programmer connection and retry.";
-  if (error instanceof ProtocolError) return "Communication with the UPDI line failed. Check the wiring and power, then retry.";
-  return error instanceof Error ? error.message : "The update could not be completed.";
+  if (error instanceof NoResponseError) return "No response from the device. Check the programmer connection and module power.";
+  if (error instanceof WrongDeviceError) return "This device is not a supported StrobeIT-Pro module.";
+  if (error instanceof LockedError) return "This device is locked and cannot be verified. No erase was performed.";
+  if (error instanceof VerifyError) return "Firmware verification failed. Check the connection and retry.";
+  if (error instanceof NvmWriteError) return "The device reported a programming error. Keep it powered and retry.";
+  if (error instanceof TimeoutError) return "The device took too long to respond. Keep it powered, reconnect, and retry.";
+  if (error instanceof PortError) return "The programmer connection was interrupted. Check the connection and retry.";
+  if (error instanceof ProtocolError) return "Device communication failed. Check the programmer connection and power, then retry.";
+  if (error instanceof Error) return error.message.replace(/ATtiny412/gi, "StrobeIT-Pro device").replace(/UPDI/gi, "device interface");
+  return "The update could not be completed.";
 }
 
 function nextStep(error: unknown): string {
   if (error instanceof LockedError) return "Use an approved recovery workflow for this locked device.";
-  if (error instanceof WrongDeviceError) return "Connect an ATtiny412 module to continue.";
+  if (error instanceof WrongDeviceError) return "Connect a supported StrobeIT-Pro module to continue.";
   if (error instanceof VerifyError) return "Check the wiring and power, then retry.";
   return "Check the connection and power, then retry.";
+}
+
+function diagnosticHint(error: unknown): string {
+  if (!(error instanceof NoResponseError)) return "";
+  if (error.message.includes("USB-serial TX echo")) return " (programmer echo timeout)";
+  if (error.message.includes("USB-serial BREAK echo")) return " (programmer reset timeout)";
+  if (error.message.includes("ACK")) return " (device write acknowledgement timeout)";
+  return " (device response timeout)";
+}
+
+function requiresReconnect(error: unknown): boolean {
+  return error instanceof NoResponseError
+    || error instanceof PortError
+    || error instanceof ProtocolError
+    || error instanceof TimeoutError
+    || error instanceof LockedError;
 }
 
 function formatBytes(bytes: number): string {

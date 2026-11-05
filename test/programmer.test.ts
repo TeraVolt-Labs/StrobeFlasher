@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NoResponseError, PortError } from "../src/transport/webserial";
 import { LockedError, NvmWriteError, VerifyError } from "../src/updi/errors";
 import { FirmwareImage } from "../src/image/image";
 import { SerialUpdiProgrammer } from "../src/updi/programmer";
-import { TINY412 } from "../src/updi/nvm";
-import { WrongDeviceError } from "../src/updi/link";
+import { NvmController, TINY412 } from "../src/updi/nvm";
+import { WrongDeviceError, type UpdiLink } from "../src/updi/link";
 import { MockUpdiTarget, type MockUpdiTargetOptions } from "./mock/mockUpdiTarget";
 
 const programmers: SerialUpdiProgrammer[] = [];
@@ -72,6 +72,21 @@ describe("SerialUpdiProgrammer", () => {
     const errorProgrammer = await connectProgrammer(errorTarget);
     await errorProgrammer.enterProgMode();
     await expect(errorProgrammer.writePage(TINY412.flashBase, page)).rejects.toBeInstanceOf(NvmWriteError);
+  });
+});
+
+describe("NVM programming mode entry", () => {
+  it("waits for LOCKSTATUS to clear after the programming key is accepted", async () => {
+    const statuses = [0, 1 << 4, 1, 1 << 3];
+    const link = {
+      readCs: vi.fn(async () => statuses.shift() ?? (1 << 3)),
+      reset: vi.fn().mockResolvedValue(undefined),
+      sendKey: vi.fn().mockResolvedValue(undefined)
+    } as unknown as UpdiLink;
+
+    await new NvmController(link).enterProgMode();
+
+    expect(link.readCs).toHaveBeenCalledTimes(4);
   });
 });
 

@@ -111,8 +111,7 @@ export class NvmController {
     const deadline = Date.now() + this.timeoutMs;
     while (Date.now() < deadline) {
       const status = await this.link.readCs(UPDI_REGISTERS.asiSystemStatus);
-      if (status & SYSTEM_STATUS.lock) throw new LockedError(await this.readSibText());
-      if (predicate(status)) return;
+      if ((status & SYSTEM_STATUS.lock) === 0 && predicate(status)) return;
       await delay(5);
     }
     throw new TimeoutError("Timed out waiting for the chip to enter NVM programming mode.");

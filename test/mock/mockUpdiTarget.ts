@@ -176,7 +176,9 @@ export class MockUpdiTarget {
       this.repeatedStoreCount -= 1;
     }
     this.repeatedStoreSize = 0;
-    output.enqueue(acknowledgements);
+    if ((this.controlRegisters[UPDI_REGISTERS.controlA]! & (1 << 3)) === 0) {
+      output.enqueue(acknowledgements);
+    }
   }
 
   private writeAddress(address: number, value: number): void {

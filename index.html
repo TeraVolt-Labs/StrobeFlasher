@@ -3,21 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#edf0e7" />
-    <title>ATtiny412 Firmware Updater</title>
+    <meta name="theme-color" content="#ffffff" />
+    <title>StrobeIT-Pro | Firmware Updater</title>
   </head>
   <body>
     <main id="browser-check" class="browser-check" hidden>
-      <p class="eyebrow">ATtiny412 / FIRMWARE UPDATER</p>
+      <p class="eyebrow">STROBEIT-PRO / FIRMWARE TOOL</p>
       <h1>Use Chrome or Edge</h1>
-      <p>Web Serial is required. Open this page in Chrome or Edge on desktop, or Chrome on Android, using HTTPS or localhost.</p>
+      <p>This browser does not support the required serial connection. Open this page in Chrome or Edge on desktop, or Chrome on Android, using HTTPS or localhost.</p>
     </main>
 
     <main id="app" class="app" hidden>
       <header class="masthead">
         <div>
-          <p class="eyebrow">FIELD TOOL / UPDI</p>
-          <h1>ATtiny412</h1>
+          <p class="eyebrow">STROBEIT-PRO / FIRMWARE TOOL</p>
+          <h1>StrobeIT-Pro</h1>
           <p class="subtitle">Firmware updater</p>
         </div>
         <span class="version-tag">OFFLINE · v0.1.0</span>
@@ -96,7 +96,7 @@
             <input id="force-chip-erase" type="checkbox" />
             <span>Erase all Flash and EEPROM before writing</span>
           </label>
-          <p class="advanced-warning">A full chip erase removes existing firmware and EEPROM data. It is only available after the ATtiny412 signature has been verified.</p>
+          <p class="advanced-warning">A full erase removes the existing program and stored data. Use only when a complete reset is required.</p>
           <div class="readback-dump">
             <span class="field-label">First bytes read back</span>
             <code id="raw-dump">Not read yet</code>
@@ -112,7 +112,7 @@
         </div>
         <pre id="session-log" aria-live="polite">Ready. No data leaves this browser.</pre>
       </details>
-      <footer>Programmer: 8 data bits, even parity, 2 stop bits. UPDI remains enabled after flashing.</footer>
+      <footer>The selected firmware is read back and verified after writing. No firmware data leaves this browser.</footer>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
